@@ -1,6 +1,11 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createClient, User } from '@supabase/supabase-js';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Session {
@@ -11,6 +16,7 @@ interface Session {
   transcript: string;
   notes: string;
   images?: string[];
+  created_at?: string; // used when matching db
 }
 
 interface SavedLink {
@@ -23,18 +29,6 @@ type Phase = 'idle' | 'recording' | 'warning' | 'generating';
 type View = 'recorder' | 'session';
 
 // ─── Storage ──────────────────────────────────────────────────────────────────
-function getSessions(): Session[] {
-  try { return JSON.parse(localStorage.getItem('aint_sessions') || '[]'); } catch { return []; }
-}
-function upsertSession(s: Session) {
-  const all = getSessions();
-  const i = all.findIndex(x => x.id === s.id);
-  if (i >= 0) all[i] = s; else all.unshift(s);
-  localStorage.setItem('aint_sessions', JSON.stringify(all));
-}
-function removeSession(id: string) {
-  localStorage.setItem('aint_sessions', JSON.stringify(getSessions().filter(s => s.id !== id)));
-}
 function getSavedLinks(): SavedLink[] {
   try { return JSON.parse(localStorage.getItem('aint_links') || '[]'); } catch { return []; }
 }
@@ -105,6 +99,14 @@ export default function App() {
   const [isEditing, setIsEditing] = useState(false);
   const [editedNotes, setEditedNotes] = useState('');
 
+  // ── Auth & Supabase State ─────────────────────────────────────────────────
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginStep, setLoginStep] = useState<'email' | 'otp'>('email');
+  const [otpToken, setOtpToken] = useState('');
+  const [authError, setAuthError] = useState('');
+
   // ── Refs shared across closures ───────────────────────────────────────────
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const startRef = useRef(0);
@@ -123,14 +125,43 @@ export default function App() {
   phaseRef.current = phase;
 
   // ── Load from storage on mount ────────────────────────────────────────────
+  const fetchSessions = async (userId: string) => {
+    const { data, error } = await supabase.from('meetings').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+    if (!error && data) {
+      setSessions(data.map(d => ({
+        id: d.id,
+        meetUrl: d.meet_url,
+        date: d.created_at,
+        durationSec: d.duration_sec,
+        transcript: d.transcript,
+        notes: d.notes,
+        images: d.images
+      })));
+    }
+  };
+
   useEffect(() => {
-    setSessions(getSessions());
     setSavedLinksS(getSavedLinks());
     // Reliably check if Gemini API key is configured on the server
     fetch('/api/check-key')
       .then(r => r.json())
       .then(d => setHasApiKey(Boolean(d.configured)))
       .catch(() => setHasApiKey(false));
+
+    // Supabase Auth
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      if (session?.user) fetchSessions(session.user.id);
+      setAuthLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      if (session?.user) fetchSessions(session.user.id);
+      else setSessions([]);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   // ── Elapsed + silence ticker ──────────────────────────────────────────────
@@ -217,17 +248,29 @@ export default function App() {
       notes = '(AI notes generation failed — raw transcript saved below)';
     }
 
-    const session: Session = { id: sid, meetUrl: url, date, durationSec: duration, transcript: final, notes, images: capturedFrames };
-    upsertSession(session);
-    const updated = getSessions();
-    setSessions(updated);
+    const sessionPayload: any = {
+      id: sid,
+      user_id: user?.id,
+      meet_url: url,
+      transcript: final,
+      notes,
+      images: capturedFrames,
+      duration_sec: duration,
+      created_at: date
+    };
+
+    if (user) {
+      await supabase.from('meetings').upsert([sessionPayload]);
+      fetchSessions(user.id);
+    }
+
     setActiveId(sid);
     setView('session');
     setPhase('idle'); phaseRef.current = 'idle';
     setMeetUrl('');
     sessionRef.current = null;
-    showToast('Meeting notes saved!');
-  }, []);
+    showToast('Meeting notes saved securely to Cloud!');
+  }, [user, customVocab]);
 
   // ── Start recording ───────────────────────────────────────────────────────
   const startRecording = useCallback(async (url: string) => {
@@ -354,19 +397,68 @@ export default function App() {
   };
 
   // ── Delete session ────────────────────────────────────────────────────────
-  const handleDeleteSession = (id: string) => {
-    removeSession(id);
-    const updated = getSessions();
-    setSessions(updated);
-    if (activeId === id) { setActiveId(null); setView('recorder'); }
+  const handleDeleteSession = async (id: string) => {
+    if (user) {
+      const { error } = await supabase.from('meetings').delete().eq('id', id);
+      if (!error) {
+        setSessions(prev => prev.filter(s => s.id !== id));
+        if (activeId === id) { setActiveId(null); setView('recorder'); }
+      } else {
+        showToast('Failed to delete meeting from cloud');
+      }
+    }
   };
 
   const isActive = phase === 'recording' || phase === 'warning';
   const activeSession = sessions.find(s => s.id === activeId);
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Login UI ──────────────────────────────────────────────────────────────
+  if (authLoading) return <div style={{ display: 'grid', placeItems: 'center', height: '100vh', background: '#0a0a0a', color: '#fff' }}>Loading Platform...</div>;
+
+  if (!user) {
+    const handleLogin = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setAuthError('');
+      if (loginStep === 'email') {
+        const { error } = await supabase.auth.signInWithOtp({ email: loginEmail });
+        if (error) setAuthError(error.message);
+        else setLoginStep('otp');
+      } else {
+        const { error } = await supabase.auth.verifyOtp({ email: loginEmail, token: otpToken, type: 'email' });
+        if (error) setAuthError(error.message);
+      }
+    };
+
+    return (
+      <div style={{ display: 'grid', placeItems: 'center', height: '100vh', background: '#0a0a0a', color: '#fff', fontFamily: 'var(--font-inter)' }}>
+        <div style={{ background: '#171717', padding: 32, borderRadius: 16, width: '100%', maxWidth: 400, border: '1px solid #262626' }}>
+          <h2 style={{ fontSize: 24, fontWeight: 600, marginBottom: 8 }}>AI Notes Taker <span style={{ color: '#ec4899', fontSize: 18 }}>●</span></h2>
+          <p style={{ color: '#a3a3a3', marginBottom: 24, fontSize: 14 }}>
+            {loginStep === 'email' ? 'Enter your email to sign in securely or create a new account to save your meetings.' : 'Check your email inbox for the 6-digit login code.'}
+          </p>
+          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {loginStep === 'email' ? (
+              <input type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} placeholder="name@company.com" required style={{ width: '100%', padding: '12px 16px', borderRadius: 8, background: '#0a0a0a', border: '1px solid #333', color: '#fff', fontSize: 15, outline: 'none' }} />
+            ) : (
+              <input type="text" value={otpToken} onChange={e => setOtpToken(e.target.value)} placeholder="000000" required maxLength={6} style={{ width: '100%', padding: '12px 16px', borderRadius: 8, background: '#0a0a0a', border: '1px solid #333', color: '#fff', fontSize: 18, letterSpacing: 8, textAlign: 'center', outline: 'none' }} />
+            )}
+            {authError && <div style={{ color: '#ef4444', fontSize: 13 }}>{authError}</div>}
+            <button type="submit" style={{ padding: '12px 16px', borderRadius: 8, background: '#fff', color: '#000', fontWeight: 500, border: 'none', cursor: 'pointer', fontSize: 15, transition: '0.2s' }}>
+              {loginStep === 'email' ? 'Continue with Email' : 'Verify & Login'}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Render Main App ───────────────────────────────────────────────────────
   return (
     <>
+      <div style={{ position: 'fixed', top: 16, right: 16, zIndex: 9999, display: 'flex', gap: 12, alignItems: 'center' }}>
+        <span style={{ fontSize: 12, color: '#666' }}>{user.email}</span>
+        <button className="btn-link" style={{ fontSize: 13, color: '#888' }} onClick={() => supabase.auth.signOut()}>Sign Out</button>
+      </div>
       {/* ════ SIDEBAR ═══════════════════════════════════════════ */}
       <aside className="sidebar">
         <div className="sidebar-brand">AI Notes Taker <span>●</span></div>
@@ -608,12 +700,17 @@ export default function App() {
                   ) : (
                     <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
                       <button className="btn-link" style={{ color: '#888' }} onClick={() => setIsEditing(false)}>Cancel</button>
-                      <button className="btn-link" style={{ color: '#3b82f6' }} onClick={() => {
-                        const updated = { ...activeSession, notes: editedNotes };
-                        upsertSession(updated);
-                        setSessions(getSessions());
-                        setIsEditing(false);
-                        showToast('Notes updated!');
+                      <button className="btn-link" style={{ color: '#3b82f6' }} onClick={async () => {
+                        if (user) {
+                          const { error } = await supabase.from('meetings').update({ notes: editedNotes }).eq('id', activeSession.id);
+                          if (!error) {
+                            setSessions(prev => prev.map(s => s.id === activeSession.id ? { ...s, notes: editedNotes } : s));
+                            setIsEditing(false);
+                            showToast('Notes updated in Cloud!');
+                          } else {
+                            showToast('Failed to update notes');
+                          }
+                        }
                       }}>Save Changes</button>
                     </div>
                   )}
