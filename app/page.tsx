@@ -113,6 +113,7 @@ export default function App() {
   const [customVocab, setCustomVocab] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [editedNotes, setEditedNotes] = useState('');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // ── Auth & Firebase State ─────────────────────────────────────────────────
   const [user, setUser] = useState<User | null>(null);
@@ -501,13 +502,12 @@ export default function App() {
   // ── Render Main App ───────────────────────────────────────────────────────
   return (
     <>
-      <div style={{ position: 'fixed', top: 16, right: 16, zIndex: 9999, display: 'flex', gap: 12, alignItems: 'center' }}>
-        <span style={{ fontSize: 12, color: '#666' }}>{user.email}</span>
-        <button className="btn-link" style={{ fontSize: 13, color: '#888' }} onClick={() => signOut(auth)}>Sign Out</button>
-      </div>
       {/* ════ SIDEBAR ═══════════════════════════════════════════ */}
-      <aside className="sidebar">
-        <div className="sidebar-brand">AI Notes Taker <span>●</span></div>
+      <aside className={`sidebar ${isSidebarOpen ? 'open' : 'closed'}`}>
+        <div className="sidebar-brand">
+          AI Notes Taker <span style={{ marginRight: 'auto' }}>●</span>
+          <button className="sidebar-close-btn" onClick={() => setIsSidebarOpen(false)}>✕</button>
+        </div>
 
         {/* New meeting button */}
         <button
@@ -589,14 +589,30 @@ export default function App() {
             </div>
           ))}
         </div>
+
+        {/* User Profile Footer */}
+        <div className="user-profile-badge">
+          <div className="user-avatar">{user.email?.charAt(0).toUpperCase()}</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 500, color: '#e8e8e8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {user.email?.split('@')[0]}
+            </div>
+            <button className="btn-link" style={{ fontSize: 11, color: '#888', padding: 0 }} onClick={() => signOut(auth)}>Sign Out</button>
+          </div>
+        </div>
       </aside>
 
       {/* ════ MAIN ══════════════════════════════════════════════ */}
       <main className="main">
         <div className="topbar">
-          <div className="topbar-greeting">
-            <h1>Welcome Back, {user.email?.split('@')[0]}</h1>
-            <p>Ready to capture some insights?</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <button className="sidebar-toggle-btn" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#e8e8e8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+            </button>
+            <div className="topbar-greeting">
+              <h1>Welcome Back, {user.email?.split('@')[0]}</h1>
+              <p>Ready to capture some insights?</p>
+            </div>
           </div>
         </div>
 
@@ -637,7 +653,7 @@ export default function App() {
                         </button>
                       </div>
 
-                      <div style={{ display: 'flex', gap: 16, marginTop: 16 }}>
+                      <div className="form-grid">
                         <div style={{ flex: 1 }}>
                           <label style={{ fontSize: 12, color: '#a1a1aa', marginBottom: 6, display: 'block' }}>Name your meeting (optional)</label>
                           <input type="text" placeholder="Eg: All Hands" style={{ width: '100%', background: 'transparent', border: '1px solid var(--panel-border)', borderRadius: 10, padding: '10px 14px', fontSize: 14, color: '#fafafa', outline: 'none' }} />
