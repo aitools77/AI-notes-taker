@@ -1,11 +1,23 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { createClient, User } from '@supabase/supabase-js';
+import { initializeApp } from 'firebase/app';
+import { getAuth, isSignInWithEmailLink, signInWithEmailLink, sendSignInLinkToEmail, User, signOut, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, collection, doc, setDoc, updateDoc, deleteDoc, query, where, orderBy, onSnapshot, serverTimestamp } from 'firebase/firestore';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseKey);
+const firebaseConfig = {
+  apiKey: "AIzaSyCfWEeFe561ZzdKZPShVM39aXdtTCN_PUQ",
+  authDomain: "ai-notes-taker-7.firebaseapp.com",
+  projectId: "ai-notes-taker-7",
+  storageBucket: "ai-notes-taker-7.firebasestorage.app",
+  messagingSenderId: "877453863570",
+  appId: "1:877453863570:web:bdf0a093a915ebb06cd44b",
+  measurementId: "G-NJ8T2R4CCN"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Session {
@@ -16,7 +28,7 @@ interface Session {
   transcript: string;
   notes: string;
   images?: string[];
-  created_at?: string; // used when matching db
+  created_at?: any; // Firestore serverTimestamp
 }
 
 interface SavedLink {
@@ -99,12 +111,11 @@ export default function App() {
   const [isEditing, setIsEditing] = useState(false);
   const [editedNotes, setEditedNotes] = useState('');
 
-  // ── Auth & Supabase State ─────────────────────────────────────────────────
+  // ── Auth & Firebase State ─────────────────────────────────────────────────
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [loginEmail, setLoginEmail] = useState('');
-  const [loginStep, setLoginStep] = useState<'email' | 'otp'>('email');
-  const [otpToken, setOtpToken] = useState('');
+  const [linkSent, setLinkSent] = useState(false);
   const [authError, setAuthError] = useState('');
 
   // ── Refs shared across closures ───────────────────────────────────────────
@@ -125,44 +136,57 @@ export default function App() {
   phaseRef.current = phase;
 
   // ── Load from storage on mount ────────────────────────────────────────────
-  const fetchSessions = async (userId: string) => {
-    const { data, error } = await supabase.from('meetings').select('*').eq('user_id', userId).order('created_at', { ascending: false });
-    if (!error && data) {
-      setSessions(data.map(d => ({
-        id: d.id,
-        meetUrl: d.meet_url,
-        date: d.created_at,
-        durationSec: d.duration_sec,
-        transcript: d.transcript,
-        notes: d.notes,
-        images: d.images
-      })));
-    }
-  };
-
   useEffect(() => {
     setSavedLinksS(getSavedLinks());
-    // Reliably check if Gemini API key is configured on the server
     fetch('/api/check-key')
       .then(r => r.json())
       .then(d => setHasApiKey(Boolean(d.configured)))
       .catch(() => setHasApiKey(false));
 
-    // Supabase Auth
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (session?.user) fetchSessions(session.user.id);
+    // Firebase Auth Magic Link handler
+    if (isSignInWithEmailLink(auth, window.location.href)) {
+      let email = window.localStorage.getItem('emailForSignIn');
+      if (!email) email = window.prompt('Please provide your email for confirmation');
+      if (email) {
+        signInWithEmailLink(auth, email, window.location.href)
+          .then(() => { window.localStorage.removeItem('emailForSignIn'); window.history.replaceState({}, document.title, '/'); })
+          .catch((err) => setAuthError(err.message));
+      }
+    }
+
+    // Firebase Auth State Listener
+    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
       setAuthLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-      if (session?.user) fetchSessions(session.user.id);
-      else setSessions([]);
+    return () => unsubscribeAuth();
+  }, []);
+
+  // ── Listen to Firestore Meetings ──────────────────────────────────────────
+  useEffect(() => {
+    if (!user) { setSessions([]); return; }
+
+    const q = query(collection(db, 'meetings'), where('user_id', '==', user.uid), orderBy('created_at', 'desc'));
+    const unsubscribeDb = onSnapshot(q, (snapshot) => {
+      const dbSessions: Session[] = [];
+      snapshot.forEach((docSnap) => {
+        const d = docSnap.data();
+        dbSessions.push({
+          id: d.id,
+          meetUrl: d.meet_url,
+          date: d.created_at?.toDate ? d.created_at.toDate().toISOString() : new Date().toISOString(),
+          durationSec: d.duration_sec,
+          transcript: d.transcript,
+          notes: d.notes,
+          images: d.images
+        });
+      });
+      setSessions(dbSessions);
     });
 
-    return () => subscription.unsubscribe();
-  }, []);
+    return () => unsubscribeDb();
+  }, [user]);
 
   // ── Elapsed + silence ticker ──────────────────────────────────────────────
   useEffect(() => {
@@ -250,7 +274,7 @@ export default function App() {
 
     const sessionPayload: any = {
       id: sid,
-      user_id: user?.id,
+      user_id: user?.uid,
       meet_url: url,
       transcript: final,
       notes,
@@ -260,8 +284,7 @@ export default function App() {
     };
 
     if (user) {
-      await supabase.from('meetings').upsert([sessionPayload]);
-      fetchSessions(user.id);
+      await setDoc(doc(db, 'meetings', sid), sessionPayload);
     }
 
     setActiveId(sid);
@@ -399,11 +422,10 @@ export default function App() {
   // ── Delete session ────────────────────────────────────────────────────────
   const handleDeleteSession = async (id: string) => {
     if (user) {
-      const { error } = await supabase.from('meetings').delete().eq('id', id);
-      if (!error) {
-        setSessions(prev => prev.filter(s => s.id !== id));
+      try {
+        await deleteDoc(doc(db, 'meetings', id));
         if (activeId === id) { setActiveId(null); setView('recorder'); }
-      } else {
+      } catch (e) {
         showToast('Failed to delete meeting from cloud');
       }
     }
@@ -419,13 +441,16 @@ export default function App() {
     const handleLogin = async (e: React.FormEvent) => {
       e.preventDefault();
       setAuthError('');
-      if (loginStep === 'email') {
-        const { error } = await supabase.auth.signInWithOtp({ email: loginEmail });
-        if (error) setAuthError(error.message);
-        else setLoginStep('otp');
-      } else {
-        const { error } = await supabase.auth.verifyOtp({ email: loginEmail, token: otpToken, type: 'email' });
-        if (error) setAuthError(error.message);
+      const actionCodeSettings = {
+        url: window.location.origin,
+        handleCodeInApp: true,
+      };
+      try {
+        await sendSignInLinkToEmail(auth, loginEmail, actionCodeSettings);
+        window.localStorage.setItem('emailForSignIn', loginEmail);
+        setLinkSent(true);
+      } catch (err: any) {
+        setAuthError(err.message);
       }
     };
 
@@ -434,19 +459,17 @@ export default function App() {
         <div style={{ background: '#171717', padding: 32, borderRadius: 16, width: '100%', maxWidth: 400, border: '1px solid #262626' }}>
           <h2 style={{ fontSize: 24, fontWeight: 600, marginBottom: 8 }}>AI Notes Taker <span style={{ color: '#ec4899', fontSize: 18 }}>●</span></h2>
           <p style={{ color: '#a3a3a3', marginBottom: 24, fontSize: 14 }}>
-            {loginStep === 'email' ? 'Enter your email to sign in securely or create a new account to save your meetings.' : 'Check your email inbox for the 6-digit login code.'}
+            {!linkSent ? 'Enter your email to sign in securely. We will send you a magic passwordless login link.' : 'Login link sent! Please check your email inbox and click the link to sign in.'}
           </p>
-          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {loginStep === 'email' ? (
+          {!linkSent && (
+            <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <input type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} placeholder="name@company.com" required style={{ width: '100%', padding: '12px 16px', borderRadius: 8, background: '#0a0a0a', border: '1px solid #333', color: '#fff', fontSize: 15, outline: 'none' }} />
-            ) : (
-              <input type="text" value={otpToken} onChange={e => setOtpToken(e.target.value)} placeholder="000000" required maxLength={6} style={{ width: '100%', padding: '12px 16px', borderRadius: 8, background: '#0a0a0a', border: '1px solid #333', color: '#fff', fontSize: 18, letterSpacing: 8, textAlign: 'center', outline: 'none' }} />
-            )}
-            {authError && <div style={{ color: '#ef4444', fontSize: 13 }}>{authError}</div>}
-            <button type="submit" style={{ padding: '12px 16px', borderRadius: 8, background: '#fff', color: '#000', fontWeight: 500, border: 'none', cursor: 'pointer', fontSize: 15, transition: '0.2s' }}>
-              {loginStep === 'email' ? 'Continue with Email' : 'Verify & Login'}
-            </button>
-          </form>
+              {authError && <div style={{ color: '#ef4444', fontSize: 13 }}>{authError}</div>}
+              <button type="submit" style={{ padding: '12px 16px', borderRadius: 8, background: '#fff', color: '#000', fontWeight: 500, border: 'none', cursor: 'pointer', fontSize: 15, transition: '0.2s' }}>
+                Send Magic Link
+              </button>
+            </form>
+          )}
         </div>
       </div>
     );
@@ -457,7 +480,7 @@ export default function App() {
     <>
       <div style={{ position: 'fixed', top: 16, right: 16, zIndex: 9999, display: 'flex', gap: 12, alignItems: 'center' }}>
         <span style={{ fontSize: 12, color: '#666' }}>{user.email}</span>
-        <button className="btn-link" style={{ fontSize: 13, color: '#888' }} onClick={() => supabase.auth.signOut()}>Sign Out</button>
+        <button className="btn-link" style={{ fontSize: 13, color: '#888' }} onClick={() => signOut(auth)}>Sign Out</button>
       </div>
       {/* ════ SIDEBAR ═══════════════════════════════════════════ */}
       <aside className="sidebar">
@@ -702,12 +725,11 @@ export default function App() {
                       <button className="btn-link" style={{ color: '#888' }} onClick={() => setIsEditing(false)}>Cancel</button>
                       <button className="btn-link" style={{ color: '#3b82f6' }} onClick={async () => {
                         if (user) {
-                          const { error } = await supabase.from('meetings').update({ notes: editedNotes }).eq('id', activeSession.id);
-                          if (!error) {
-                            setSessions(prev => prev.map(s => s.id === activeSession.id ? { ...s, notes: editedNotes } : s));
+                          try {
+                            await updateDoc(doc(db, 'meetings', activeSession.id), { notes: editedNotes });
                             setIsEditing(false);
                             showToast('Notes updated in Cloud!');
-                          } else {
+                          } catch (e) {
                             showToast('Failed to update notes');
                           }
                         }
