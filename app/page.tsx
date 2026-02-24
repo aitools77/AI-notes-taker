@@ -459,7 +459,13 @@ export default function App() {
         <div style={{ background: '#171717', padding: 32, borderRadius: 16, width: '100%', maxWidth: 400, border: '1px solid #262626' }}>
           <h2 style={{ fontSize: 24, fontWeight: 600, marginBottom: 8 }}>AI Notes Taker <span style={{ color: '#ec4899', fontSize: 18 }}>●</span></h2>
           <p style={{ color: '#a3a3a3', marginBottom: 24, fontSize: 14 }}>
-            {!linkSent ? 'Enter your email to sign in securely. We will send you a magic passwordless login link.' : 'Login link sent! Please check your email inbox and click the link to sign in.'}
+            {!linkSent ? 'Enter your email to sign in securely. We will send you a magic passwordless login link.' : (
+              <span>
+                <b>Login link sent!</b><br /><br />
+                Please check your email inbox and click the link to sign in.<br /><br />
+                <span style={{ color: '#fcd34d' }}>⚠️ If you don't see it, please check your <b>Spam</b> or <b>Junk</b> folder.</span>
+              </span>
+            )}
           </p>
           {!linkSent && (
             <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
