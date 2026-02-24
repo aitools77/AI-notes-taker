@@ -38,7 +38,7 @@ interface SavedLink {
 }
 
 type Phase = 'idle' | 'recording' | 'warning' | 'generating';
-type View = 'recorder' | 'session';
+type View = 'recorder' | 'session' | 'home';
 
 // ─── Storage ──────────────────────────────────────────────────────────────────
 function getSavedLinks(): SavedLink[] {
@@ -85,10 +85,13 @@ const WARN_GRACE_SEC = 60;
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function App() {
+  // ── Types ─────────────────────────────────────────────────────────────
+  type View = 'recorder' | 'session' | 'home';
+
   // ── State ─────────────────────────────────────────────────────────────────
   const [sessions, setSessions] = useState<Session[]>([]);
   const [savedLinks, setSavedLinksS] = useState<SavedLink[]>([]);
-  const [view, setView] = useState<View>('recorder');
+  const [view, setView] = useState<View>('home');
   const [activeId, setActiveId] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>('idle');
   const [meetUrl, setMeetUrl] = useState('');
@@ -104,7 +107,7 @@ export default function App() {
   const [addingLink, setAddingLink] = useState(false);
   const [hasApiKey, setHasApiKey] = useState(true);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
-  const [speechLang, setSpeechLang] = useState('en-IN'); // defaults to English so live text isn't Devanagari
+  const [speechLangs, setSpeechLangs] = useState<string[]>(['en-IN', 'hi-IN', 'mr-IN']);
   const [openMeet, setOpenMeet] = useState(false);
   const [captureScreen, setCaptureScreen] = useState(false);
   const [customVocab, setCustomVocab] = useState('');
@@ -167,7 +170,7 @@ export default function App() {
   useEffect(() => {
     if (!user) { setSessions([]); return; }
 
-    const q = query(collection(db, 'meetings'), where('user_id', '==', user.uid), orderBy('created_at', 'desc'));
+    const q = query(collection(db, 'meetings'), where('user_id', '==', user.uid));
     const unsubscribeDb = onSnapshot(q, (snapshot) => {
       const dbSessions: Session[] = [];
       snapshot.forEach((docSnap) => {
@@ -175,13 +178,15 @@ export default function App() {
         dbSessions.push({
           id: d.id,
           meetUrl: d.meet_url,
-          date: d.created_at?.toDate ? d.created_at.toDate().toISOString() : new Date().toISOString(),
+          date: d.created_at?.toDate ? d.created_at.toDate().toISOString() : d.created_at || new Date().toISOString(),
           durationSec: d.duration_sec,
           transcript: d.transcript,
           notes: d.notes,
           images: d.images
         });
       });
+      // Sort in JS instead of Firestore strictly to avoid Composite Index requirements
+      dbSessions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       setSessions(dbSessions);
     });
 
@@ -287,6 +292,17 @@ export default function App() {
       await setDoc(doc(db, 'meetings', sid), sessionPayload);
     }
 
+    const uiSession: Session = {
+      id: sid,
+      meetUrl: url,
+      date: date,
+      durationSec: duration,
+      transcript: final,
+      notes: notes,
+      images: capturedFrames
+    };
+
+    setSessions(prev => [uiSession, ...prev.filter(s => s.id !== sid)]);
     setActiveId(sid);
     setView('session');
     setPhase('idle'); phaseRef.current = 'idle';
@@ -359,7 +375,8 @@ export default function App() {
     setTranscript(''); setInterim(''); setElapsed(0); setSilence(0);
 
     const rec = new SR();
-    rec.continuous = true; rec.interimResults = true; rec.lang = speechLang;
+    rec.continuous = true; rec.interimResults = true;
+    rec.lang = speechLangs.join(',');
     recognitionRef.current = rec;
 
     rec.onresult = (e: SpeechRecognitionEvent) => {
@@ -495,7 +512,7 @@ export default function App() {
         {/* New meeting button */}
         <button
           className="sidebar-new-btn"
-          onClick={() => { setView('recorder'); setActiveId(null); }}
+          onClick={() => { setView('home'); setActiveId(null); phase === 'idle' }}
         >
           <span className="icon">＋</span> New Recording
         </button>
@@ -508,7 +525,7 @@ export default function App() {
               <span className="saved-link-dot" />
               <span
                 className="saved-link-name"
-                onClick={() => { setMeetUrl(link.url); startRecording(link.url); }}
+                onClick={() => { setMeetUrl(link.url); setView('home'); setActiveId(null); }}
               >
                 {link.label}
               </span>
@@ -576,141 +593,157 @@ export default function App() {
 
       {/* ════ MAIN ══════════════════════════════════════════════ */}
       <main className="main">
+        <div className="topbar">
+          <div className="topbar-greeting">
+            <h1>Welcome Back, {user.email?.split('@')[0]}</h1>
+            <p>Ready to capture some insights?</p>
+          </div>
+        </div>
+
         <div className="main-inner">
 
-          {/* ── Recorder view ─────────────────────────────────── */}
-          {view === 'recorder' && (
-            <>
-              {/* API key warning */}
-              {!hasApiKey && !isActive && (
-                <div className="api-key-banner">
-                  <span>⚠️ Gemini API key not set — notes will be saved as raw transcript only.</span>
-                  <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" style={{ color: '#93c5fd', marginLeft: 8 }}>Get free key →</a>
-                  <span style={{ color: '#555', marginLeft: 4 }}>then add to <code style={{ background: '#111', padding: '1px 5px', borderRadius: 4 }}>.env.local</code> and restart</span>
-                </div>
-              )}
+          {/* ── Dashboard Grid (Home / Recorder) ─────────────────────────── */}
+          {(view === 'home' || view === 'recorder') && (
+            <div className="dashboard-grid">
+              {/* LEFT COLUMN */}
+              <div className="dashboard-col">
 
-              <p className="recorder-title">
-                {isActive ? 'Recording in progress…' : 'Start a new recording'}
-              </p>
-              <p className="recorder-sub">
-                {isActive
-                  ? 'Listening. Switch to your Meet tab and talk. (Or stay here if you are on the same device).'
-                  : 'Start recording below.'}
-              </p>
+                {/* NEW MEETING PANEL */}
+                <div className="card-panel">
+                  <h2 className="card-title">Capture Online Meeting</h2>
 
-              {!isActive && (
-                <>
-                  <div className="join-box">
-                    <input
-                      type="url"
-                      placeholder="Meeting URL (optional)"
-                      value={meetUrl}
-                      onChange={e => setMeetUrl(e.target.value)}
-                      disabled={phase === 'generating'}
-                      onKeyDown={e => { if (e.key === 'Enter') handleJoin(); }}
-                    />
-                    <button className="btn-primary" onClick={handleJoin} disabled={phase === 'generating' || !meetUrl.trim()}>
-                      {phase === 'generating' ? 'Generating…' : 'Start Recording'}
-                    </button>
-                  </div>
-                  <div style={{ marginBottom: 16 }}>
-                    <input
-                      type="text"
-                      placeholder="Custom Vocabulary (comma-separated, e.g. QRapid, Next.js, ACME Corp)"
-                      value={customVocab}
-                      onChange={e => setCustomVocab(e.target.value)}
-                      disabled={phase === 'generating'}
-                      style={{ width: '100%', background: '#1a1a1a', border: '1px solid #2d2d2d', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#e8e8e8', outline: 'none', transition: 'border-color 0.15s' }}
-                    />
-                    <div style={{ fontSize: 11, color: '#555', marginTop: 4, paddingLeft: 4 }}>
-                      Helps the AI correct phonetic mistakes (like "kyon rapid" → "QRapid")
-                    </div>
-                  </div>
-                  <div style={{ marginBottom: 20, fontSize: 13, color: '#aaa', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                      <input type="checkbox" checked={openMeet} onChange={e => setOpenMeet(e.target.checked)} />
-                      Open this link in a new Google Meet tab
-                    </label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', color: captureScreen ? '#93c5fd' : '#aaa' }}>
-                      <input type="checkbox" checked={captureScreen} onChange={e => setCaptureScreen(e.target.checked)} />
-                      <strong>Capture Video/Slides (Vision AI)</strong> — asks for Screen Share to analyze presentations!
-                    </label>
-                  </div>
-                  <div className="settings-row">
-                    <span>Language:</span>
-                    <select value={speechLang} onChange={e => setSpeechLang(e.target.value)} style={{ marginRight: 16 }}>
-                      <option value="en-IN">English (India)</option>
-                      <option value="hi-IN">Hindi / English mix</option>
-                      <option value="mr-IN">Marathi / English mix</option>
-                    </select>
+                  {!isActive && phase !== 'generating' && (
+                    <>
+                      {/* API key warning */}
+                      {!hasApiKey && (
+                        <div className="api-key-banner" style={{ background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.2)' }}>
+                          <span>⚠️ Gemini API key not set — notes will be saved as raw transcript only.</span>
+                        </div>
+                      )}
 
-                    <span>Auto-stop after</span>
-                    <select value={silenceLimit} onChange={e => setSilenceLimit(Number(e.target.value))}>
-                      <option value={5}>5 min</option>
-                      <option value={10}>10 min</option>
-                      <option value={20}>20 min</option>
-                      <option value={30}>30 min</option>
-                      <option value={60}>60 min</option>
-                    </select>
-                    <span>silence</span>
-                  </div>
-                </>
-              )}
+                      <div className="join-box" style={{ marginTop: 24 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', background: '#09090b', border: '1px solid var(--panel-border)', borderRadius: 12, padding: '4px 16px', flex: 1, gap: 12 }}>
+                          <input
+                            type="url"
+                            placeholder="Paste your meeting URL here (Google Meet, Zoom, etc.)"
+                            value={meetUrl}
+                            onChange={e => setMeetUrl(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') handleJoin(); }}
+                            style={{ flex: 1, background: 'transparent', border: 'none', color: '#fff', fontSize: 14, outline: 'none', padding: '12px 0' }}
+                          />
+                        </div>
+                        <button className="btn-primary" onClick={handleJoin} disabled={!meetUrl.trim()} style={{ borderRadius: 12, padding: '0 24px', flexShrink: 0 }}>
+                          Start Capturing
+                        </button>
+                      </div>
 
-              {/* Status */}
-              {phase === 'recording' && (
-                <div className="status-bar">
-                  <span className="dot" />
-                  <span>Recording — {fmtDuration(elapsed)}</span>
-                  {silence > 60 && <span className="silence-note">· silent {fmtDuration(silence)}</span>}
-                </div>
-              )}
-              {phase === 'generating' && (
-                <div className="status-bar">
-                  <span className="dot amber" />
-                  <span>Generating meeting notes with AI…</span>
-                </div>
-              )}
+                      <div style={{ display: 'flex', gap: 16, marginTop: 16 }}>
+                        <div style={{ flex: 1 }}>
+                          <label style={{ fontSize: 12, color: '#a1a1aa', marginBottom: 6, display: 'block' }}>Name your meeting (optional)</label>
+                          <input type="text" placeholder="Eg: All Hands" style={{ width: '100%', background: 'transparent', border: '1px solid var(--panel-border)', borderRadius: 10, padding: '10px 14px', fontSize: 14, color: '#fafafa', outline: 'none' }} />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <label style={{ fontSize: 12, color: '#a1a1aa', marginBottom: 6, display: 'block' }}>Meeting Languages (Multi-select)</label>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            {[
+                              { code: 'en-IN', label: '🇺🇸 English' },
+                              { code: 'hi-IN', label: '🇮🇳 Hindi' },
+                              { code: 'mr-IN', label: '🇮🇳 Marathi' }
+                            ].map(lang => {
+                              const isSelected = speechLangs.includes(lang.code);
+                              return (
+                                <button
+                                  key={lang.code}
+                                  onClick={() => {
+                                    if (isSelected && speechLangs.length > 1) {
+                                      setSpeechLangs(speechLangs.filter(l => l !== lang.code));
+                                    } else if (!isSelected) {
+                                      setSpeechLangs([...speechLangs, lang.code]);
+                                    }
+                                  }}
+                                  style={{
+                                    background: isSelected ? 'rgba(139, 92, 246, 0.2)' : '#111113',
+                                    border: `1px solid ${isSelected ? 'var(--accent-primary)' : '#333'}`,
+                                    color: isSelected ? '#fff' : '#a1a1aa',
+                                    padding: '8px 12px',
+                                    borderRadius: '8px',
+                                    fontSize: '13px',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s'
+                                  }}
+                                >
+                                  {lang.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
 
-              {/* Warning */}
-              {phase === 'warning' && (
-                <div className="warning-banner">
-                  <span><strong>No speech for {fmtDuration(silence)}.</strong> Auto-stopping in {warnCount}s…</span>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button className="btn-ghost btn-sm" onClick={handleKeepRecording}>Keep Recording</button>
-                    <button className="btn-danger btn-sm" onClick={stopAndSave}>Stop Now</button>
-                  </div>
-                </div>
-              )}
+                      <details style={{ marginTop: 24 }}>
+                        <summary style={{ fontSize: 13, color: 'var(--accent-primary)', cursor: 'pointer', outline: 'none' }}>Advanced Capture Settings</summary>
+                        <div style={{ marginTop: 12, padding: 16, background: '#09090b', borderRadius: 12, border: '1px solid var(--panel-border)' }}>
+                          <div style={{ marginBottom: 16 }}>
+                            <input type="text" placeholder="Custom Vocab (e.g. Next.js, ACME)" value={customVocab} onChange={e => setCustomVocab(e.target.value)} style={{ width: '100%', background: 'transparent', border: '1px solid var(--panel-border)', borderRadius: 8, padding: '8px 12px', fontSize: 13, color: '#e8e8e8', outline: 'none' }} />
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13, color: '#a1a1aa' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                              <input type="checkbox" checked={openMeet} onChange={e => setOpenMeet(e.target.checked)} />
+                              Open link in a new Meet tab
+                            </label>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', color: captureScreen ? 'var(--accent-primary)' : '' }}>
+                              <input type="checkbox" checked={captureScreen} onChange={e => setCaptureScreen(e.target.checked)} />
+                              Capture Video/Slides (Vision AI)
+                            </label>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 16, fontSize: 12, color: '#71717a' }}>
+                            Stop after
+                            <select value={silenceLimit} onChange={e => setSilenceLimit(Number(e.target.value))} style={{ background: 'transparent', border: '1px solid var(--panel-border)', color: '#a1a1aa', borderRadius: 4, padding: '2px 4px' }}>
+                              <option value={5}>5m</option><option value={10}>10m</option><option value={30}>30m</option>
+                            </select>
+                            silence
+                          </div>
+                        </div>
+                      </details>
+                    </>
+                  )}
 
-              {isActive && (
-                <>
-                  {openMeet && (
-                    <div className="warning-banner" style={{ background: '#3a0808', color: '#ffb3b3', border: '1px solid #701010', marginBottom: '20px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6 }}>
-                      <strong style={{ fontSize: 14 }}>🚨 How to fix the Echo:</strong>
-                      <span>1. Go to the newly opened Google Meet tab.</span>
-                      <span>2. Click the <strong>Microphone icon to MUTE</strong> yourself in that tab.</span>
-                      <span>3. Talk from your main laptop/app. This notepad will still hear you perfectly in the background but won't feed the audio back into the meeting!</span>
+                  {/* ACTIVE RECORDING STATE OVERLAY */}
+                  {isActive && (
+                    <div style={{ padding: 24, background: 'rgba(139, 92, 246, 0.05)', borderRadius: 12, border: '1px solid rgba(139, 92, 246, 0.2)' }}>
+                      <div className="status-bar" style={{ marginBottom: 20 }}>
+                        <span className="dot" />
+                        <span style={{ color: '#fafafa', fontWeight: 500, fontSize: 14 }}>Recording Live — {fmtDuration(elapsed)}</span>
+                      </div>
+
+                      {openMeet && (
+                        <div className="warning-banner" style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#fca5a5', border: '1px solid rgba(239, 68, 68, 0.2)', marginBottom: 20 }}>
+                          <strong style={{ fontSize: 13 }}>🚨 Mute yourself in the Google Meet tab to prevent echo!</strong>
+                        </div>
+                      )}
+
+                      <div className="transcript-box" style={{ background: '#09090b' }}>
+                        {transcript ? <>{transcript}<span className="interim">{interim}</span></> : <span className="placeholder">Listening to meeting audio...</span>}
+                      </div>
+
+                      <div style={{ display: 'flex', gap: 12, marginTop: 20 }}>
+                        <button className="btn-primary" onClick={stopAndSave} style={{ flex: 1, padding: 12 }}>Finish & Generate Notes</button>
+                      </div>
                     </div>
                   )}
-                  <div className="transcript-box">
-                    {transcript
-                      ? <>{transcript}<span className="interim">{interim}</span></>
-                      : <span className="placeholder">Waiting for speech…</span>
-                    }
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                    <button className="btn-danger" onClick={stopAndSave}>Stop & Save Notes</button>
-                    <button className="btn-ghost btn-sm" onClick={() => { setTranscript(''); lastSpeechRef.current = Date.now(); }}>Clear</button>
-                  </div>
-                </>
-              )}
 
-              {!isActive && phase !== 'generating' && sessions.length === 0 && (
-                <div className="empty">No sessions yet.<br />Join a meeting to get started.</div>
-              )}
-            </>
+                  {phase === 'generating' && (
+                    <div style={{ padding: 40, textAlign: 'center', background: '#09090b', borderRadius: 12, border: '1px solid var(--panel-border)' }}>
+                      <span className="dot amber" style={{ width: 12, height: 12, margin: '0 auto 16px' }} />
+                      <div style={{ color: '#fafafa', fontSize: 15, fontWeight: 500 }}>AI is processing your meeting...</div>
+                      <div style={{ color: '#a1a1aa', fontSize: 13, marginTop: 8 }}>Structuring notes, extracting action items, and saving to cloud.</div>
+                    </div>
+                  )}
+                </div>
+
+              </div>
+
+            </div>
           )}
 
           {/* ── Session / Notes view ───────────────────────────── */}
