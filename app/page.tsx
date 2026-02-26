@@ -453,7 +453,7 @@ export default function App() {
   const activeSession = sessions.find(s => s.id === activeId);
 
   // ── Login UI ──────────────────────────────────────────────────────────────
-  if (authLoading) return <div style={{ display: 'grid', placeItems: 'center', height: '100vh', background: '#0a0a0a', color: '#fff' }}>Loading Platform...</div>;
+  if (authLoading) return <div style={{ display: 'grid', placeItems: 'center', height: '100vh', background: '#f9fafb', color: '#18181b' }}>Loading Platform...</div>;
 
   if (!user) {
     const handleLogin = async (e: React.FormEvent) => {
@@ -473,23 +473,23 @@ export default function App() {
     };
 
     return (
-      <div style={{ display: 'grid', placeItems: 'center', height: '100vh', background: '#0a0a0a', color: '#fff', fontFamily: 'var(--font-inter)' }}>
-        <div style={{ background: '#171717', padding: 32, borderRadius: 16, width: '100%', maxWidth: 400, border: '1px solid #262626' }}>
+      <div style={{ display: 'grid', placeItems: 'center', height: '100vh', background: '#f9fafb', color: '#18181b', fontFamily: 'var(--font-inter)' }}>
+        <div style={{ background: '#ffffff', padding: 32, borderRadius: 16, width: '100%', maxWidth: 400, border: '1px solid #e4e4e7' }}>
           <h2 style={{ fontSize: 24, fontWeight: 600, marginBottom: 8 }}>AI Notes Taker <span style={{ color: '#ec4899', fontSize: 18 }}>●</span></h2>
-          <p style={{ color: '#a3a3a3', marginBottom: 24, fontSize: 14 }}>
+          <p style={{ color: '#52525b', marginBottom: 24, fontSize: 14 }}>
             {!linkSent ? 'Enter your email to sign in securely. We will send you a magic passwordless login link.' : (
               <span>
                 <b>Login link sent!</b><br /><br />
                 Please check your email inbox and click the link to sign in.<br /><br />
-                <span style={{ color: '#fcd34d' }}>⚠️ If you don't see it, please check your <b>Spam</b> or <b>Junk</b> folder.</span>
+                <span style={{ color: '#b45309' }}>⚠️ If you don't see it, please check your <b>Spam</b> or <b>Junk</b> folder.</span>
               </span>
             )}
           </p>
           {!linkSent && (
             <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <input type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} placeholder="name@company.com" required style={{ width: '100%', padding: '12px 16px', borderRadius: 8, background: '#0a0a0a', border: '1px solid #333', color: '#fff', fontSize: 15, outline: 'none' }} />
+              <input type="email" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} placeholder="name@company.com" required style={{ width: '100%', padding: '12px 16px', borderRadius: 8, background: '#f9fafb', border: '1px solid #e4e4e7', color: '#18181b', fontSize: 15, outline: 'none' }} />
               {authError && <div style={{ color: '#ef4444', fontSize: 13 }}>{authError}</div>}
-              <button type="submit" style={{ padding: '12px 16px', borderRadius: 8, background: '#fff', color: '#000', fontWeight: 500, border: 'none', cursor: 'pointer', fontSize: 15, transition: '0.2s' }}>
+              <button type="submit" style={{ padding: '12px 16px', borderRadius: 8, background: '#18181b', color: '#ffffff', fontWeight: 500, border: 'none', cursor: 'pointer', fontSize: 15, transition: '0.2s' }}>
                 Send Magic Link
               </button>
             </form>
@@ -541,14 +541,14 @@ export default function App() {
                 placeholder="meet.google.com/..."
                 value={newLinkUrl}
                 onChange={e => setNewLinkUrl(e.target.value)}
-                style={{ width: '100%', background: '#1a1a1a', border: '1px solid #2d2d2d', borderRadius: 6, padding: '6px 8px', fontSize: 12, color: '#ccc', outline: 'none', marginBottom: 4 }}
+                style={{ width: '100%', background: '#ffffff', border: '1px solid var(--panel-border)', borderRadius: 6, padding: '6px 8px', fontSize: 12, color: '#3f3f46', outline: 'none', marginBottom: 4 }}
               />
               <input
                 type="text"
                 placeholder="Name (optional)"
                 value={newLinkLabel}
                 onChange={e => setNewLinkLabel(e.target.value)}
-                style={{ width: '100%', background: '#1a1a1a', border: '1px solid #2d2d2d', borderRadius: 6, padding: '6px 8px', fontSize: 12, color: '#ccc', outline: 'none', marginBottom: 6 }}
+                style={{ width: '100%', background: '#ffffff', border: '1px solid var(--panel-border)', borderRadius: 6, padding: '6px 8px', fontSize: 12, color: '#3f3f46', outline: 'none', marginBottom: 6 }}
               />
               <div style={{ display: 'flex', gap: 6 }}>
                 <button className="btn-primary btn-sm" style={{ flex: 1 }} onClick={handleAddLink}>Save</button>
@@ -594,10 +594,10 @@ export default function App() {
         <div className="user-profile-badge">
           <div className="user-avatar">{user.email?.charAt(0).toUpperCase()}</div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 500, color: '#e8e8e8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div style={{ fontSize: 13, fontWeight: 500, color: '#18181b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {user.email?.split('@')[0]}
             </div>
-            <button className="btn-link" style={{ fontSize: 11, color: '#888', padding: 0 }} onClick={() => signOut(auth)}>Sign Out</button>
+            <button className="btn-link" style={{ fontSize: 11, color: '#52525b', padding: 0 }} onClick={() => signOut(auth)}>Sign Out</button>
           </div>
         </div>
       </aside>
@@ -607,7 +607,7 @@ export default function App() {
         <div className="topbar">
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             <button className="sidebar-toggle-btn" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#e8e8e8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#18181b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
             </button>
             <div className="topbar-greeting">
               <h1>Welcome Back, {user.email?.split('@')[0]}</h1>
@@ -638,14 +638,14 @@ export default function App() {
                       )}
 
                       <div className="join-box" style={{ marginTop: 24 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', background: '#09090b', border: '1px solid var(--panel-border)', borderRadius: 12, padding: '4px 16px', flex: 1, gap: 12 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', background: '#ffffff', border: '1px solid var(--panel-border)', borderRadius: 12, padding: '4px 16px', flex: 1, gap: 12 }}>
                           <input
                             type="url"
                             placeholder="Paste your meeting URL here (Google Meet, Zoom, etc.)"
                             value={meetUrl}
                             onChange={e => setMeetUrl(e.target.value)}
                             onKeyDown={e => { if (e.key === 'Enter') handleJoin(); }}
-                            style={{ flex: 1, background: 'transparent', border: 'none', color: '#fff', fontSize: 14, outline: 'none', padding: '12px 0' }}
+                            style={{ flex: 1, background: 'transparent', border: 'none', color: '#18181b', fontSize: 14, outline: 'none', padding: '12px 0' }}
                           />
                         </div>
                         <button className="btn-primary" onClick={handleJoin} disabled={!meetUrl.trim()} style={{ borderRadius: 12, padding: '0 24px', flexShrink: 0 }}>
@@ -655,11 +655,11 @@ export default function App() {
 
                       <div className="form-grid">
                         <div style={{ flex: 1 }}>
-                          <label style={{ fontSize: 12, color: '#a1a1aa', marginBottom: 6, display: 'block' }}>Name your meeting (optional)</label>
-                          <input type="text" placeholder="Eg: All Hands" style={{ width: '100%', background: 'transparent', border: '1px solid var(--panel-border)', borderRadius: 10, padding: '10px 14px', fontSize: 14, color: '#fafafa', outline: 'none' }} />
+                          <label style={{ fontSize: 12, color: '#71717a', marginBottom: 6, display: 'block' }}>Name your meeting (optional)</label>
+                          <input type="text" placeholder="Eg: All Hands" style={{ width: '100%', background: 'transparent', border: '1px solid var(--panel-border)', borderRadius: 10, padding: '10px 14px', fontSize: 14, color: '#18181b', outline: 'none' }} />
                         </div>
                         <div style={{ flex: 1 }}>
-                          <label style={{ fontSize: 12, color: '#a1a1aa', marginBottom: 6, display: 'block' }}>Meeting Languages (Multi-select)</label>
+                          <label style={{ fontSize: 12, color: '#71717a', marginBottom: 6, display: 'block' }}>Meeting Languages (Multi-select)</label>
                           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                             {[
                               { code: 'en-IN', label: '🇺🇸 English' },
@@ -678,8 +678,8 @@ export default function App() {
                                     }
                                   }}
                                   style={{
-                                    background: isSelected ? 'rgba(139, 92, 246, 0.2)' : '#111113',
-                                    border: `1px solid ${isSelected ? 'var(--accent-primary)' : '#333'}`,
+                                    background: isSelected ? 'rgba(139, 92, 246, 0.2)' : '#ffffff',
+                                    border: `1px solid ${isSelected ? 'var(--accent-primary)' : '#e4e4e7'}`,
                                     color: isSelected ? '#fff' : '#a1a1aa',
                                     padding: '8px 12px',
                                     borderRadius: '8px',
@@ -698,11 +698,11 @@ export default function App() {
 
                       <details style={{ marginTop: 24 }}>
                         <summary style={{ fontSize: 13, color: 'var(--accent-primary)', cursor: 'pointer', outline: 'none' }}>Advanced Capture Settings</summary>
-                        <div style={{ marginTop: 12, padding: 16, background: '#09090b', borderRadius: 12, border: '1px solid var(--panel-border)' }}>
+                        <div style={{ marginTop: 12, padding: 16, background: '#ffffff', borderRadius: 12, border: '1px solid var(--panel-border)' }}>
                           <div style={{ marginBottom: 16 }}>
-                            <input type="text" placeholder="Custom Vocab (e.g. Next.js, ACME)" value={customVocab} onChange={e => setCustomVocab(e.target.value)} style={{ width: '100%', background: 'transparent', border: '1px solid var(--panel-border)', borderRadius: 8, padding: '8px 12px', fontSize: 13, color: '#e8e8e8', outline: 'none' }} />
+                            <input type="text" placeholder="Custom Vocab (e.g. Next.js, ACME)" value={customVocab} onChange={e => setCustomVocab(e.target.value)} style={{ width: '100%', background: 'transparent', border: '1px solid var(--panel-border)', borderRadius: 8, padding: '8px 12px', fontSize: 13, color: '#18181b', outline: 'none' }} />
                           </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13, color: '#a1a1aa' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13, color: '#71717a' }}>
                             <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                               <input type="checkbox" checked={openMeet} onChange={e => setOpenMeet(e.target.checked)} />
                               Open link in a new Meet tab
@@ -714,7 +714,7 @@ export default function App() {
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 16, fontSize: 12, color: '#71717a' }}>
                             Stop after
-                            <select value={silenceLimit} onChange={e => setSilenceLimit(Number(e.target.value))} style={{ background: 'transparent', border: '1px solid var(--panel-border)', color: '#a1a1aa', borderRadius: 4, padding: '2px 4px' }}>
+                            <select value={silenceLimit} onChange={e => setSilenceLimit(Number(e.target.value))} style={{ background: 'transparent', border: '1px solid var(--panel-border)', color: '#71717a', borderRadius: 4, padding: '2px 4px' }}>
                               <option value={5}>5m</option><option value={10}>10m</option><option value={30}>30m</option>
                             </select>
                             silence
@@ -729,16 +729,16 @@ export default function App() {
                     <div style={{ padding: 24, background: 'rgba(139, 92, 246, 0.05)', borderRadius: 12, border: '1px solid rgba(139, 92, 246, 0.2)' }}>
                       <div className="status-bar" style={{ marginBottom: 20 }}>
                         <span className="dot" />
-                        <span style={{ color: '#fafafa', fontWeight: 500, fontSize: 14 }}>Recording Live — {fmtDuration(elapsed)}</span>
+                        <span style={{ color: '#18181b', fontWeight: 500, fontSize: 14 }}>Recording Live — {fmtDuration(elapsed)}</span>
                       </div>
 
                       {openMeet && (
-                        <div className="warning-banner" style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#fca5a5', border: '1px solid rgba(239, 68, 68, 0.2)', marginBottom: 20 }}>
+                        <div className="warning-banner" style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#dc2626', border: '1px solid rgba(239, 68, 68, 0.2)', marginBottom: 20 }}>
                           <strong style={{ fontSize: 13 }}>🚨 Mute yourself in the Google Meet tab to prevent echo!</strong>
                         </div>
                       )}
 
-                      <div className="transcript-box" style={{ background: '#09090b' }}>
+                      <div className="transcript-box" style={{ background: '#ffffff' }}>
                         {transcript ? <>{transcript}<span className="interim">{interim}</span></> : <span className="placeholder">Listening to meeting audio...</span>}
                       </div>
 
@@ -749,10 +749,10 @@ export default function App() {
                   )}
 
                   {phase === 'generating' && (
-                    <div style={{ padding: 40, textAlign: 'center', background: '#09090b', borderRadius: 12, border: '1px solid var(--panel-border)' }}>
+                    <div style={{ padding: 40, textAlign: 'center', background: '#ffffff', borderRadius: 12, border: '1px solid var(--panel-border)' }}>
                       <span className="dot amber" style={{ width: 12, height: 12, margin: '0 auto 16px' }} />
-                      <div style={{ color: '#fafafa', fontSize: 15, fontWeight: 500 }}>AI is processing your meeting...</div>
-                      <div style={{ color: '#a1a1aa', fontSize: 13, marginTop: 8 }}>Structuring notes, extracting action items, and saving to cloud.</div>
+                      <div style={{ color: '#18181b', fontSize: 15, fontWeight: 500 }}>AI is processing your meeting...</div>
+                      <div style={{ color: '#71717a', fontSize: 13, marginTop: 8 }}>Structuring notes, extracting action items, and saving to cloud.</div>
                     </div>
                   )}
                 </div>
@@ -777,7 +777,7 @@ export default function App() {
                     </button>
                   ) : (
                     <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-                      <button className="btn-link" style={{ color: '#888' }} onClick={() => setIsEditing(false)}>Cancel</button>
+                      <button className="btn-link" style={{ color: '#52525b' }} onClick={() => setIsEditing(false)}>Cancel</button>
                       <button className="btn-link" style={{ color: '#3b82f6' }} onClick={async () => {
                         if (user) {
                           try {
@@ -806,11 +806,11 @@ export default function App() {
                 <>
                   <div className="notes-content" dangerouslySetInnerHTML={{ __html: md(activeSession.notes) }} />
                   {activeSession.images && activeSession.images.length > 0 && (
-                    <div style={{ marginTop: 32, paddingTop: 32, borderTop: '1px solid #333' }}>
-                      <h3 style={{ marginBottom: 16, fontSize: 16, fontWeight: 500, color: '#e8e8e8' }}>Captured Presentation Slides</h3>
+                    <div style={{ marginTop: 32, paddingTop: 32, borderTop: '1px solid #e4e4e7' }}>
+                      <h3 style={{ marginBottom: 16, fontSize: 16, fontWeight: 500, color: '#18181b' }}>Captured Presentation Slides</h3>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
                         {activeSession.images.map((base64, i) => (
-                          <img key={i} src={`data:image/jpeg;base64,${base64}`} alt={`Captured slide ${i + 1}`} style={{ width: '100%', borderRadius: 8, border: '1px solid #444', background: '#000' }} />
+                          <img key={i} src={`data:image/jpeg;base64,${base64}`} alt={`Captured slide ${i + 1}`} style={{ width: '100%', borderRadius: 8, border: '1px solid #e4e4e7', background: '#f4f4f5' }} />
                         ))}
                       </div>
                     </div>
@@ -821,8 +821,8 @@ export default function App() {
                   value={editedNotes}
                   onChange={e => setEditedNotes(e.target.value)}
                   style={{
-                    width: '100%', minHeight: '400px', background: '#111', color: '#ccc',
-                    border: '1px solid #333', borderRadius: 8, padding: 16, fontSize: 13,
+                    width: '100%', minHeight: '400px', background: '#ffffff', color: '#3f3f46',
+                    border: '1px solid #e4e4e7', borderRadius: 8, padding: 16, fontSize: 13,
                     fontFamily: 'monospace', lineHeight: 1.6, outline: 'none'
                   }}
                 />
